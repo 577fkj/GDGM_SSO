@@ -9,6 +9,7 @@ import string
 from Crypto.Cipher import AES
 import pandas as pd
 import requests
+import ddddocr
 
 
 def pad(b: bytearray, blocksize: int) -> bytearray:
@@ -24,6 +25,9 @@ def pad(b: bytearray, blocksize: int) -> bytearray:
 def unpad(s: bytearray) -> bytearray:
     return s[:-s[-1]]
 
+def ocr_code(img_bytes):
+    ocr = ddddocr.DdddOcr(show_ad=False)
+    return ocr.classification(img_bytes)
 
 class sso:
     headers = {
@@ -32,6 +36,7 @@ class sso:
 
     sso_url = 'https://sfrz.gdgm.cn/authserver/login'
     sso_cap_check_url = "https://sfrz.gdgm.cn/authserver/needCaptcha.html?username={}&pwdEncrypt2=pwdEncryptSalt"
+    sso_cap_img_url = "https://sfrz.gdgm.cn/authserver/captcha.html"
     sso_service_url = 'https://sfrz.gdgm.cn/authserver/login?service={}'
     session = requests.Session()
 
@@ -113,6 +118,12 @@ class sso:
         }
         if self.__need_captcha():
             print('需要验证码')
+            img = self.session.get(self.sso_cap_img_url).content
+            code = ocr_code(img)
+            with open('cap.png', 'wb') as f:
+                f.write(img)
+            print('验证码为：', code)
+            data['captchaResponse'] = code
         else:
             print('不需要验证码')
         response = self.session.post(self.sso_url, data=data, allow_redirects=False, headers=self.headers)
@@ -121,7 +132,7 @@ class sso:
         else:
             # <span id="msg" class="auth_error" style="top:-19px;">您提供的用户名或者密码有误</span>
             print('sso登录失败')
-            print(re.findall(r'(?<=id="msg" class="auth_error" style="top:-19px;">).*?(?=</span>)', response.text)[0])
+            raise Exception(re.findall(r'(?<=id="msg" class="auth_error" style="top:-19px;">).*?(?=</span>)', response.text)[0])
 
 
 class card:
