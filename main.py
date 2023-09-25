@@ -225,11 +225,13 @@ def main():
     diff_h = 0
     diff_p = 0
     if data.get_row_count() != 0:
+        if power_data['lastDate'][-2:] == ".0":
+            power_data['lastDate'] = power_data['lastDate'][:-2]
         t = datetime.datetime.strptime(power_data['lastDate'], '%Y-%m-%d %H:%M:%S')
         last_t = datetime.datetime.strptime(data.get_last_row()['time'], '%Y-%m-%d %H:%M:%S')
         diff_h = (t - last_t).seconds / 3600
 
-        diff_p = power_data['balance'] - data.get_last_row()['powerBalance']
+        diff_p = float(power_data['powerBalance']) - data.get_last_row()['powerBalance']
 
     data.add_row([power_data['roomNum'], power_data['powerBalance'], diff_h, diff_p, power_data['lastDate']])
     data.save()
