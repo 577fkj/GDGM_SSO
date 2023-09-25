@@ -165,14 +165,20 @@ class card:
             service = re.findall(r'(?<=service=).*', response.headers["Location"])
             if len(service) > 0:
                 ticket = self.sso_obj.get_service_ticket(service[0])
-                self.session.get(self.sso_login_url + '&ticket=' + ticket, headers=self.headers)
+                response = self.session.get(self.sso_login_url + '&ticket=' + ticket, headers=self.headers)
+                if 'token' in response.request.url:
+                    print('一卡通登录成功')
+                else:
+                    print(response.status_code, response.text)
+                    raise Exception('一卡通登录失败')
             else:
                 if 'token' in response.headers["Location"]:
                     print('一卡通已登录')
                 else:
                     raise Exception('一卡通登录失败')
         else:
-            raise Exception('未知错误', response.status_code, response.text)
+            print(response.status_code, response.text)
+            raise Exception('未知错误')
 
     def get_power_balance(self):
         data = {
