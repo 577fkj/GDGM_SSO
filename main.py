@@ -230,7 +230,9 @@ def main():
         t = datetime.datetime.strptime(power_data['lastDate'], '%Y-%m-%d %H:%M:%S')
         last_t = datetime.datetime.strptime(data.get_last_row()['time'], '%Y-%m-%d %H:%M:%S')
         diff_h = (t - last_t).seconds / 3600
-
+        if diff_h == 0:
+            print('数据未更新')
+            return
         diff_p = float(power_data['powerBalance']) - data.get_last_row()['powerBalance']
 
     data.add_row([power_data['roomNum'], power_data['powerBalance'], diff_h, diff_p, power_data['lastDate']])
