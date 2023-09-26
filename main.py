@@ -180,22 +180,20 @@ class card:
             print(response.status_code, response.text)
             raise Exception('未知错误')
 
-    def get_power_balance(self):
+    def get_power_balance(self, impl, no, room):
         data = {
-            # 白云、荔湾校区 CHANGGONGGONGMAO 天河校区 MINGHANNORMAL
-            "implType": "", # you need to input
-
+            "implType": impl,
             "schoolAreaNo": "",
-
-            # POST https://carduser.gdgm.cn/powerfee/getRoomInfo?from=&token={token}&implType={impl}
-            "buildingNo": "", # you need to input
-            "roomNum": "", # you need to input
-
+            "buildingNo": no,
+            "roomNum": room,
             "from": "",
             "token": self.session.cookies['token']
         }
         response = self.session.post(self.power_balance_url, data=data, headers=self.headers)
         return response.json()['obj']
+
+    def get_token(self):
+        return self.session.cookies['token']
 
 
 class data_sheet:
@@ -227,17 +225,22 @@ class data_sheet:
         return self.df.__str__()
 
 
-user = '' # you need to input
-passwd = '' # you need to input
+g_user = '' # You need to input
+g_passwd = '' # You need to input
+# 白云、荔湾校区 CHANGGONGGONGMAO 天河校区 MINGHANNORMAL
+g_impl = '' # You need to input
+# POST https://carduser.gdgm.cn/powerfee/getRoomInfo?from=&token={token}&implType={impl}
+g_no = '' # You need to input
+g_room = '' # You need to input
 
 
 def main():
     data = data_sheet('data.csv', ['room', 'powerBalance', "diff_h", "diff", 'time'])
 
-    sso_obj = sso(user, passwd)
+    sso_obj = sso(g_user, g_passwd)
 
     card_obj = card(sso_obj)
-    power_data = card_obj.get_power_balance()
+    power_data = card_obj.get_power_balance(g_impl, g_no, g_room)
 
     diff_h = 0
     diff_p = 0
@@ -249,6 +252,7 @@ def main():
         diff_h = (t - last_t).seconds / 3600
         if diff_h == 0:
             print('数据未更新')
+            print(data)
             return
         diff_p = float(power_data['powerBalance']) - data.get_last_row()['powerBalance']
 
