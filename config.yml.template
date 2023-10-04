@@ -1,0 +1,24 @@
+# 统一登录
+gdgm:
+  user: xxxx
+  password: xxxx
+
+# 一卡通
+card:
+  user: xxxx
+  password: xxxx
+  # 白云、荔湾校区 CHANGGONGGONGMAO 天河校区 MINGHANNORMAL
+  impl: xxxx
+  # POST https://carduser.gdgm.cn/powerfee/getRoomInfo?from=&token={token}&implType={impl}
+  no: xxxx
+  room: xxxx
+
+# 优慕课
+umooc:
+  user: xxxx
+  password: xxxx
+
+# 教务系统
+jw:
+  user: xxxx
+  password: xxxx

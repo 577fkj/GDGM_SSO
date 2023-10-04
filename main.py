@@ -5,12 +5,14 @@ import pickle
 import base64
 import random
 import string
+import urllib
+from urllib.parse import unquote
 
 from Crypto.Cipher import AES
+from ruamel.yaml import YAML
 import pandas as pd
 import requests
 import ddddocr
-
 
 def pad(b: bytearray, blocksize: int) -> bytearray:
     pad_data = b''
@@ -56,8 +58,8 @@ class sso:
             with open('sso_cookies', 'rb') as f:
                 self.session.cookies.update(pickle.load(f))
 
-    def get_service_ticket(self, service):
-        response = self.session.get(self.sso_service_url.format(service), allow_redirects=False, headers=self.headers)
+    def get_service_ticket(self, service, encode = False):
+        response = self.session.get(self.sso_service_url.format(service if encode else urllib.parse.quote(service)), allow_redirects=False, headers=self.headers)
         if 'Location' in response.headers.keys():
             return re.findall(r'ticket=(.*)', response.headers['Location'])[0]
         else:
@@ -238,8 +240,192 @@ class card:
     def get_token(self):
         return self.session.cookies['token']
 
+class umooc:
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Linux; Android 11; Redmi K30 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.82 Mobile Safari/537.36'
+    }
+    sso_url = 'https://umooc.gdgm.cn/meol/homepage/common/sso_login.jsp'
+    sso_login_url = 'https://umooc.gdgm.cn/meol/homepage/common/sso_login.jsp'
+    sso_param = [
+        ';jsessionid={}?ticket={}',
+        '?ticket={}',
+    ]
+    umooc_index = 'https://umooc.gdgm.cn/meol/index.do'
+    umooc_my = 'https://umooc.gdgm.cn/meol/personal.do'
+    umooc_login = 'https://umooc.gdgm.cn/meol/loginCheck.do'
+    session = requests.Session()
+    def __init__(self, sso_obj, user = '', passwd = ''):
+        self.__load_cookies()
+        if sso_obj is None:
+            self.user = user
+            self.passwd = passwd
+            self.__login()
+        else:
+            self.sso_obj = sso_obj
+            self.__sso_login()
+        self.__save_cookies()
 
-class data_sheet:
+    def __save_cookies(self):
+        with open('umooc_cookies', 'wb') as f:
+            pickle.dump(self.session.cookies, f)
+
+    def __load_cookies(self):
+        if os.path.exists('umooc_cookies'):
+            with open('umooc_cookies', 'rb') as f:
+                self.session.cookies.update(pickle.load(f))
+
+    @staticmethod
+    def __get_jsessionid(url):
+        print(url)
+        return re.findall(r'(?<=jsessionid=).*?(?=$)', url)[0]
+
+    @staticmethod
+    def __get_login_token(data):
+        # <input type="hidden" name="logintoken" value="xxxxxxxxxx">
+        return re.findall(r'(?<=name="logintoken" value=").*?(?=")', data)[0]
+
+    def __is_login(self):
+        response = self.session.get(self.umooc_my, headers=self.headers)
+        if response.text.find('重新登录') != -1:
+            return False
+        else:
+            return True
+
+    @staticmethod
+    def __get_error_msg(data):
+        return re.findall(r'(?<=<div class="loginerror_mess">)[\d\D]*?(?=</div>)', data)[0].replace('\n', '').replace('<br>', '').replace('\r', '').replace('\t', '').replace(' ', '')
+
+    def __sso_login(self):
+        if self.__is_login():
+            print('慕课已登录')
+            return
+        response = self.session.get(self.sso_url, headers=self.headers, allow_redirects=False)
+        if response.status_code == 302:
+            url = response.headers["Location"]
+            service = re.findall(r'(?<=service=).*', response.headers["Location"])
+            if len(service) > 0:
+                url = urllib.parse.unquote(service[0])
+            ticket = self.sso_obj.get_service_ticket(self.sso_login_url, True)
+            if 'jsessionid' in url:
+                param = self.sso_param[0].format(self.__get_jsessionid(url), ticket)
+            else:
+                param = self.sso_param[1].format(ticket)
+            response = self.session.get(self.sso_login_url + param, headers=self.headers)
+
+            if self.umooc_my in response.url:
+                print('慕课登录成功')
+            else:
+                print(response.status_code, response.text)
+                raise Exception('慕课登录失败')
+        else:
+            print(response.status_code, response.text)
+            raise Exception('未知错误')
+
+    def __login(self):
+        if self.__is_login():
+            print('慕课已登录')
+            return
+        response = self.session.get(self.umooc_index, headers=self.headers, allow_redirects=False)
+        login_token = self.__get_login_token(response.text)
+        data = {
+            "logintoken": login_token,
+            "IPT_LOGINUSERNAME": self.user,
+            "IPT_LOGINPASSWORD": self.passwd
+        }
+        response = self.session.post(self.umooc_login, data=data, headers=self.headers)
+        if self.umooc_my in response.url:
+            print('慕课登录成功')
+        else:
+            print(response.status_code, response.text)
+            raise Exception('慕课登录失败', self.__get_error_msg(response.text))
+
+class jw:
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Linux; Android 11; Redmi K30 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.82 Mobile Safari/537.36'
+    }
+    session = requests.Session()
+    service = 'https://jw.gdgm.cn/jsxsd/sso.jsp'
+    jw_index = '/jsxsd/framework/xsMain.jsp'
+    jw_login_code = 'https://jw.gdgm.cn/Logon.do?method=logon&flag=sess'
+    jw_login = 'https://jw.gdgm.cn/Logon.do?method=logon'
+    jw_cap_url = 'https://jw.gdgm.cn/verifycode.servlet'
+
+    def __init__(self, sso_obj, user = '', passwd = ''):
+        self.__load_cookies()
+        if sso_obj is None:
+            self.user = str(user)
+            self.passwd = str(passwd)
+            self.__login()
+        else:
+            self.sso_obj = sso_obj
+            self.__sso_login()
+
+    def __save_cookies(self):
+        with open('jw_cookies', 'wb') as f:
+            pickle.dump(self.session.cookies, f)
+
+    def __load_cookies(self):
+        if os.path.exists('jw_cookies'):
+            with open('jw_cookies', 'rb') as f:
+                self.session.cookies.update(pickle.load(f))
+
+    @staticmethod
+    def __get_msg(data):
+        return re.findall(r'(?<=<li class="input_li" id="showMsg" style="color: red; margin-bottom: 0;">)[\d\D]*?(?=</li>)', data)[0].replace('\n', '').replace('<br>', '').replace('\r', '').replace('\t', '').replace(' ', '').replace('&nbsp;', '')
+
+    @staticmethod
+    def __encrypt(data, code):
+        datas = code.split('#')
+        scode = datas[0]
+        sxh = datas[1]
+        encode = ''
+        for i in range(0, len(code)):
+            if i < 20:
+                encode += data[i:i + 1] + scode[0:int(sxh[i:i + 1])]
+                scode = scode[int(sxh[i:i + 1]):len(scode)]
+            else:
+                encode += data[i:len(data)]
+                break
+        return encode
+
+    def __login(self):
+        cap = self.session.get(self.jw_cap_url, headers=self.headers).content
+        with open('cap.png', 'wb') as f:
+            f.write(cap)
+        cap_code = ocr_code(cap)
+        print('验证码：', cap_code)
+        code = self.session.get(self.jw_login_code, headers=self.headers).text
+        if code == 'no':
+            print('验证码加密失败')
+            return
+        data = {
+            'userAccount': self.user,
+            'userPassword': self.passwd,
+            'RANDOMCODE': cap_code,
+            'encoded': self.__encrypt(self.user + '%%%' + self.passwd, code),
+        }
+        response = self.session.post(self.jw_login, allow_redirects=False, data=data, headers=self.headers)
+        if response.status_code == 302:
+            print('教务登录成功')
+        else:
+            msg = self.__get_msg(response.text)
+            if msg == '验证码错误!!':
+                print('验证码错误 重试')
+                self.__login()
+                return
+            print(response.status_code, response.text)
+            raise Exception('教务登录失败', self.__get_msg(response.text))
+
+    def __sso_login(self):
+        ticket = self.sso_obj.get_service_ticket(self.service, True)
+        response = self.session.get(self.service + '?ticket=' + ticket, headers=self.headers)
+        if self.jw_index in response.url:
+            print('教务登录成功')
+        else:
+            print(response.status_code, response.url, response.text)
+            raise Exception('教务登录失败')
+
+class data_base:
     def __init__(self, name, headers):
         self.name = name
         self.headers = headers
@@ -267,30 +453,39 @@ class data_sheet:
     def __str__(self):
         return self.df.__str__()
 
+def load_config():
+    yml = YAML(typ='safe')
+    with open('config.yml', 'r', encoding='utf-8') as f:
+        return yml.load(f)
 
-g_user = '' # You need to input
-g_passwd = '' # You need to input
-g_card_passwd = '' # You need to input
-# 白云、荔湾校区 CHANGGONGGONGMAO 天河校区 MINGHANNORMAL
-g_impl = '' # You need to input
-# POST https://carduser.gdgm.cn/powerfee/getRoomInfo?from=&token={token}&implType={impl}
-g_no = '' # You need to input
-g_room = '' # You need to input
+def save_config(config):
+    yml = YAML(typ='safe')
+    with open('config.yml', 'w', encoding='utf-8') as f:
+        yml.dump(config, f)
 
 
 def main():
-    data = data_sheet('data.csv', ['room', 'powerBalance', "diff_h", "diff", 'time'])
+    data = data_base('data.csv', ['room', 'powerBalance', "diff_h", "diff", 'time'])
+    config = load_config()
+    card_info = config['card']
+    gdgm_info = config['gdgm']
+    umooc_info = config['umooc']
+    jw_info = config['jw']
 
     # noinspection PyBroadException
     try:
         print('sso开始登录')
-        sso_obj = sso(g_user, g_passwd)
+        sso_obj = sso(gdgm_info['user'], gdgm_info['password'])
     except Exception:
         print('sso登录异常')
         sso_obj = None
 
-    card_obj = card(sso_obj, g_user, g_card_passwd)
-    power_data = card_obj.get_power_balance(g_impl, g_no, g_room)
+    umooc_obj = umooc(sso_obj, umooc_info['user'], umooc_info['password'])
+    jw_obj = jw(sso_obj, jw_info['user'], jw_info['password'])
+
+
+    card_obj = card(sso_obj, card_info['user'], card_info['password'])
+    power_data = card_obj.get_power_balance(card_info['impl'], card_info['no'], card_info['room'])
 
     diff_h = 0
     diff_p = 0
