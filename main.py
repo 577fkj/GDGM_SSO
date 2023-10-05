@@ -58,12 +58,17 @@ class sso:
             with open('sso_cookies', 'rb') as f:
                 self.session.cookies.update(pickle.load(f))
 
+    @staticmethod
+    def __get_error_msg(html):
+        return re.findall(r'(?<=<div id="msg" class="errors">)[\s\S]*?(?=</div>)', html)[0].replace('\n', '').replace(' ', '').replace('<h2>', '').replace('</h2>', ',').replace('<p>', '').replace('</p>', '')
+
     def get_service_ticket(self, service, encode = False):
-        response = self.session.get(self.sso_service_url.format(service if encode else urllib.parse.quote(service)), allow_redirects=False, headers=self.headers)
+        response = self.session.get(self.sso_service_url.format(service if not encode else urllib.parse.quote(service)), allow_redirects=False, headers=self.headers)
         if 'Location' in response.headers.keys():
             return re.findall(r'ticket=(.*)', response.headers['Location'])[0]
         else:
-            raise Exception('Login failed')
+            print(response.url)
+            raise Exception('Login failed', self.__get_error_msg(response.text))
 
     @staticmethod
     def __random_str(length):
@@ -480,8 +485,8 @@ def main():
         print('sso登录异常')
         sso_obj = None
 
-    umooc_obj = umooc(sso_obj, umooc_info['user'], umooc_info['password'])
-    jw_obj = jw(sso_obj, jw_info['user'], jw_info['password'])
+    # umooc_obj = umooc(sso_obj, umooc_info['user'], umooc_info['password'])
+    # jw_obj = jw(sso_obj, jw_info['user'], jw_info['password'])
 
 
     card_obj = card(sso_obj, card_info['user'], card_info['password'])
