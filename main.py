@@ -1,3 +1,4 @@
+import json
 import re
 import os
 import datetime
@@ -349,11 +350,14 @@ class jw:
         'User-Agent': 'Mozilla/5.0 (Linux; Android 11; Redmi K30 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.82 Mobile Safari/537.36'
     }
     session = requests.Session()
-    service = 'https://jw.gdgm.cn/jsxsd/sso.jsp'
+    jw_url = 'https://jw.gdgm.cn'
+    service = jw_url + '/jsxsd/sso.jsp'
     jw_index = '/jsxsd/framework/xsMain.jsp'
-    jw_login_code = 'https://jw.gdgm.cn/Logon.do?method=logon&flag=sess'
-    jw_login = 'https://jw.gdgm.cn/Logon.do?method=logon'
-    jw_cap_url = 'https://jw.gdgm.cn/verifycode.servlet'
+    jw_login_code = jw_url + '/Logon.do?method=logon&flag=sess'
+    jw_login = jw_url + '/Logon.do?method=logon'
+    jw_cap_url = jw_url + '/verifycode.servlet'
+    jw_check_session = jw_url + '/jsxsd/framework/blankPage.jsp'
+    jw_soc = jw_url + '/jsxsd/xskb/xskb_list.do'
 
     def __init__(self, sso_obj, user = '', passwd = ''):
         self.__load_cookies()
@@ -374,26 +378,117 @@ class jw:
             with open('jw_cookies', 'rb') as f:
                 self.session.cookies.update(pickle.load(f))
 
+    def __check_session(self):
+        response = self.session.get(self.jw_check_session, headers=self.headers)
+        if len(response.text) == 0:
+            return True
+        return False
+
+    def __get_course_info(self, data):
+        data = data.split('--')
+        # remove empty string
+        data = list(filter(None, data))
+        course_info = []
+        for s in data:
+            pattern = r'(.+?)\s*((?:\d+-\d+,?)+)\(周\)(.+)'
+            matches = re.findall(pattern, s)
+            if len(matches) > 0:
+                # 解析周
+                weeks = []
+                for week in matches[0][1].split(','):
+                    week = week.split('-')
+                    if len(week) == 1:
+                        weeks.append(int(week[0]))
+                    else:
+                        weeks.extend(range(int(week[0]), int(week[1]) + 1))
+                course_info.append([
+                    matches[0][0],
+                    weeks,
+                    matches[0][2]
+                ])
+        return course_info
+
+    def get_soc(self):
+        response = self.session.get(self.jw_soc, headers=self.headers).text
+        data = re.findall(r'(class="kbcontent".*?>|<br>)(.*?)<font title=\'老师\'>(.*?)</font>', response)
+        teachers = {}
+        for i in range(len(data)):
+            teachers[data[i][1].replace('<br/>', '')] = data[i][2]
+        data = pd.read_html(response)[0].to_dict()
+        keys = list(data.keys())
+        # 星期
+        week = keys[1:]
+        # 课程时间
+        time = list(data[keys[0]].values())
+        tips_index = time.index('备注:')
+        # 课程
+        course = {
+            'tips': data[week[0]][tips_index],
+            'course': {}
+        }
+        for i in range(len(week)):
+            c = data[week[i]].values()
+            # 去除Nan
+            c = [x if not pd.isna(x) else '' for x in c]
+            for j in range(len(c)):
+                # 去除备注
+                if j == tips_index:
+                    continue
+                # 处理课程
+                if c[j] != '':
+                    info = self.__get_course_info(c[j])
+                    for x in info:
+                        for w in x[1]:
+                            if w not in course['course']:
+                                course['course'][w] = {}
+                            if time[j] not in course['course'][w]:
+                                course['course'][w][time[j]] = []
+                            course['course'][w][time[j]].append({
+                                'name': x[0],
+                                'teacher': teachers[x[0]],
+                                'room': x[2]
+                            })
+        return course
+
     @staticmethod
     def __get_msg(data):
         return re.findall(r'(?<=<li class="input_li" id="showMsg" style="color: red; margin-bottom: 0;">)[\d\D]*?(?=</li>)', data)[0].replace('\n', '').replace('<br>', '').replace('\r', '').replace('\t', '').replace(' ', '').replace('&nbsp;', '')
 
     @staticmethod
-    def __encrypt(data, code):
+    def encrypt(data, code):
         datas = code.split('#')
         scode = datas[0]
         sxh = datas[1]
         encode = ''
-        for i in range(0, len(code)):
+        for i in range(len(data)):
             if i < 20:
-                encode += data[i:i + 1] + scode[0:int(sxh[i:i + 1])]
-                scode = scode[int(sxh[i:i + 1]):len(scode)]
+                encode += data[i] + scode[0:int(sxh[i])]
+                scode = scode[int(sxh[i]):]
             else:
-                encode += data[i:len(data)]
+                encode += data[i:]
                 break
         return encode
 
+    @staticmethod
+    def decrypt(encode, code):
+        datas = code.split('#')
+        scode = datas[0]
+        sxh = datas[1]
+        decode = ''
+        offset = 0
+        for i in range(len(sxh)):
+            decode += encode[offset]
+            offset += int(sxh[i]) + 1
+            if offset >= len(encode):
+                break
+        if offset > len(sxh):
+            decode += encode[offset:]
+        return decode
+
     def __login(self):
+        if self.__check_session():
+            print('教务已登录')
+            return
         cap = self.session.get(self.jw_cap_url, headers=self.headers).content
         with open('cap.png', 'wb') as f:
             f.write(cap)
@@ -407,7 +502,7 @@ class jw:
             'userAccount': self.user,
             'userPassword': self.passwd,
             'RANDOMCODE': cap_code,
-            'encoded': self.__encrypt(self.user + '%%%' + self.passwd, code),
+            'encoded': jw.encrypt(self.user + '%%%' + self.passwd, code),
         }
         response = self.session.post(self.jw_login, allow_redirects=False, data=data, headers=self.headers)
         if response.status_code == 302:
@@ -422,6 +517,9 @@ class jw:
             raise Exception('教务登录失败', self.__get_msg(response.text))
 
     def __sso_login(self):
+        if self.__check_session():
+            print('教务已登录')
+            return
         ticket = self.sso_obj.get_service_ticket(self.service, True)
         response = self.session.get(self.service + '?ticket=' + ticket, headers=self.headers)
         if self.jw_index in response.url:
@@ -487,6 +585,7 @@ def main():
 
     # umooc_obj = umooc(sso_obj, umooc_info['user'], umooc_info['password'])
     # jw_obj = jw(sso_obj, jw_info['user'], jw_info['password'])
+    # print(jw_obj.get_soc())
 
 
     card_obj = card(sso_obj, card_info['user'], card_info['password'])
