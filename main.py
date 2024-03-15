@@ -1,4 +1,4 @@
-import json
+import csv
 import re
 import os
 import datetime
@@ -11,9 +11,7 @@ from urllib.parse import unquote
 
 from Crypto.Cipher import AES
 from ruamel.yaml import YAML
-import pandas as pd
 import requests
-import ddddocr
 
 def pad(b: bytearray, blocksize: int) -> bytearray:
     pad_data = b''
@@ -29,8 +27,13 @@ def unpad(s: bytearray) -> bytearray:
     return s[:-s[-1]]
 
 def ocr_code(img_bytes):
-    ocr = ddddocr.DdddOcr(show_ad=False)
-    return ocr.classification(img_bytes)
+    try:
+        import ddddocr
+        ocr = ddddocr.DdddOcr(show_ad=False)
+        return ocr.classification(img_bytes)
+    except Exception as e:
+        print('OCR识别失败', e)
+        return ''
 
 class sso:
     headers = {
@@ -81,17 +84,6 @@ class sso:
 
         enc = base64.b64encode(
             cipher.encrypt(pad(self.__random_str(64).encode('utf-8') + data.encode('utf-8'), 16))).decode('utf-8')
-
-        # encrypted_data = enc
-        # encrypted_data = base64.b64decode(encrypted_data)
-        # key = key.encode('utf-8')
-        # iv = encrypted_data[:16]
-        # cipher = AES.new(key, AES.MODE_CBC, iv)
-        # decrypted_data = cipher.decrypt(encrypted_data[16:])
-        # print(decrypted_data)
-        # print(len(decrypted_data))
-        # print(unpad(bytearray(decrypted_data[48:])).decode('utf-8'))
-
         return enc
 
     @staticmethod
@@ -246,315 +238,53 @@ class card:
     def get_token(self):
         return self.session.cookies['token']
 
-class umooc:
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Linux; Android 11; Redmi K30 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.82 Mobile Safari/537.36'
-    }
-    sso_url = 'https://umooc.gdgm.cn/meol/homepage/common/sso_login.jsp'
-    sso_login_url = 'https://umooc.gdgm.cn/meol/homepage/common/sso_login.jsp'
-    sso_param = [
-        ';jsessionid={}?ticket={}',
-        '?ticket={}',
-    ]
-    umooc_index = 'https://umooc.gdgm.cn/meol/index.do'
-    umooc_my = 'https://umooc.gdgm.cn/meol/personal.do'
-    umooc_login = 'https://umooc.gdgm.cn/meol/loginCheck.do'
-    session = requests.Session()
-    def __init__(self, sso_obj, user = '', passwd = ''):
-        self.__load_cookies()
-        if sso_obj is None:
-            self.user = user
-            self.passwd = passwd
-            self.__login()
-        else:
-            self.sso_obj = sso_obj
-            self.__sso_login()
-        self.__save_cookies()
-
-    def __save_cookies(self):
-        with open('umooc_cookies', 'wb') as f:
-            pickle.dump(self.session.cookies, f)
-
-    def __load_cookies(self):
-        if os.path.exists('umooc_cookies'):
-            with open('umooc_cookies', 'rb') as f:
-                self.session.cookies.update(pickle.load(f))
-
-    @staticmethod
-    def __get_jsessionid(url):
-        print(url)
-        return re.findall(r'(?<=jsessionid=).*?(?=$)', url)[0]
-
-    @staticmethod
-    def __get_login_token(data):
-        # <input type="hidden" name="logintoken" value="xxxxxxxxxx">
-        return re.findall(r'(?<=name="logintoken" value=").*?(?=")', data)[0]
-
-    def __is_login(self):
-        response = self.session.get(self.umooc_my, headers=self.headers)
-        if response.text.find('重新登录') != -1:
-            return False
-        else:
-            return True
-
-    @staticmethod
-    def __get_error_msg(data):
-        return re.findall(r'(?<=<div class="loginerror_mess">)[\d\D]*?(?=</div>)', data)[0].replace('\n', '').replace('<br>', '').replace('\r', '').replace('\t', '').replace(' ', '')
-
-    def __sso_login(self):
-        if self.__is_login():
-            print('慕课已登录')
-            return
-        response = self.session.get(self.sso_url, headers=self.headers, allow_redirects=False)
-        if response.status_code == 302:
-            url = response.headers["Location"]
-            service = re.findall(r'(?<=service=).*', response.headers["Location"])
-            if len(service) > 0:
-                url = urllib.parse.unquote(service[0])
-            ticket = self.sso_obj.get_service_ticket(self.sso_login_url, True)
-            if 'jsessionid' in url:
-                param = self.sso_param[0].format(self.__get_jsessionid(url), ticket)
-            else:
-                param = self.sso_param[1].format(ticket)
-            response = self.session.get(self.sso_login_url + param, headers=self.headers)
-
-            if self.umooc_my in response.url:
-                print('慕课登录成功')
-            else:
-                print(response.status_code, response.text)
-                raise Exception('慕课登录失败')
-        else:
-            print(response.status_code, response.text)
-            raise Exception('未知错误')
-
-    def __login(self):
-        if self.__is_login():
-            print('慕课已登录')
-            return
-        response = self.session.get(self.umooc_index, headers=self.headers, allow_redirects=False)
-        login_token = self.__get_login_token(response.text)
-        data = {
-            "logintoken": login_token,
-            "IPT_LOGINUSERNAME": self.user,
-            "IPT_LOGINPASSWORD": self.passwd
-        }
-        response = self.session.post(self.umooc_login, data=data, headers=self.headers)
-        if self.umooc_my in response.url:
-            print('慕课登录成功')
-        else:
-            print(response.status_code, response.text)
-            raise Exception('慕课登录失败', self.__get_error_msg(response.text))
-
-class jw:
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Linux; Android 11; Redmi K30 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.82 Mobile Safari/537.36'
-    }
-    session = requests.Session()
-    jw_url = 'https://jw.gdgm.cn'
-    service = jw_url + '/jsxsd/sso.jsp'
-    jw_index = '/jsxsd/framework/xsMain.jsp'
-    jw_login_code = jw_url + '/Logon.do?method=logon&flag=sess'
-    jw_login = jw_url + '/Logon.do?method=logon'
-    jw_cap_url = jw_url + '/verifycode.servlet'
-    jw_check_session = jw_url + '/jsxsd/framework/blankPage.jsp'
-    jw_soc = jw_url + '/jsxsd/xskb/xskb_list.do'
-
-    def __init__(self, sso_obj, user = '', passwd = ''):
-        self.__load_cookies()
-        if sso_obj is None:
-            self.user = str(user)
-            self.passwd = str(passwd)
-            self.__login()
-        else:
-            self.sso_obj = sso_obj
-            self.__sso_login()
-
-    def __save_cookies(self):
-        with open('jw_cookies', 'wb') as f:
-            pickle.dump(self.session.cookies, f)
-
-    def __load_cookies(self):
-        if os.path.exists('jw_cookies'):
-            with open('jw_cookies', 'rb') as f:
-                self.session.cookies.update(pickle.load(f))
-
-    def __check_session(self):
-        response = self.session.get(self.jw_check_session, headers=self.headers)
-        if len(response.text) == 0:
-            return True
-        return False
-
-    def __get_course_info(self, data):
-        data = data.split('--')
-        # remove empty string
-        data = list(filter(None, data))
-        course_info = []
-        for s in data:
-            pattern = r'(.+?)\s*((?:\d+-\d+,?)+)\(周\)(.+)'
-            matches = re.findall(pattern, s)
-            if len(matches) > 0:
-                # 解析周
-                weeks = []
-                for week in matches[0][1].split(','):
-                    week = week.split('-')
-                    if len(week) == 1:
-                        weeks.append(int(week[0]))
-                    else:
-                        weeks.extend(range(int(week[0]), int(week[1]) + 1))
-                course_info.append([
-                    matches[0][0],
-                    weeks,
-                    matches[0][2]
-                ])
-        return course_info
-
-    def get_soc(self):
-        response = self.session.get(self.jw_soc, headers=self.headers).text
-        data = re.findall(r'(class="kbcontent".*?>|<br>)(.*?)<font title=\'老师\'>(.*?)</font>', response)
-        teachers = {}
-        for i in range(len(data)):
-            teachers[data[i][1].replace('<br/>', '')] = data[i][2]
-        data = pd.read_html(response)[0].to_dict()
-        keys = list(data.keys())
-        # 星期
-        week = keys[1:]
-        # 课程时间
-        time = list(data[keys[0]].values())
-        tips_index = time.index('备注:')
-        # 课程
-        course = {
-            'tips': data[week[0]][tips_index],
-            'course': {}
-        }
-        for i in range(len(week)):
-            c = data[week[i]].values()
-            # 去除Nan
-            c = [x if not pd.isna(x) else '' for x in c]
-            for j in range(len(c)):
-                # 去除备注
-                if j == tips_index:
-                    continue
-                # 处理课程
-                if c[j] != '':
-                    info = self.__get_course_info(c[j])
-                    for x in info:
-                        for w in x[1]:
-                            if w not in course['course']:
-                                course['course'][w] = {}
-                            if time[j] not in course['course'][w]:
-                                course['course'][w][time[j]] = []
-                            course['course'][w][time[j]].append({
-                                'name': x[0],
-                                'teacher': teachers[x[0]],
-                                'room': x[2]
-                            })
-        return course
-
-    @staticmethod
-    def __get_msg(data):
-        return re.findall(r'(?<=<li class="input_li" id="showMsg" style="color: red; margin-bottom: 0;">)[\d\D]*?(?=</li>)', data)[0].replace('\n', '').replace('<br>', '').replace('\r', '').replace('\t', '').replace(' ', '').replace('&nbsp;', '')
-
-    @staticmethod
-    def encrypt(data, code):
-        datas = code.split('#')
-        scode = datas[0]
-        sxh = datas[1]
-        encode = ''
-        for i in range(len(data)):
-            if i < 20:
-                encode += data[i] + scode[0:int(sxh[i])]
-                scode = scode[int(sxh[i]):]
-            else:
-                encode += data[i:]
-                break
-        return encode
-
-    @staticmethod
-    def decrypt(encode, code):
-        datas = code.split('#')
-        scode = datas[0]
-        sxh = datas[1]
-        decode = ''
-        offset = 0
-        for i in range(len(sxh)):
-            decode += encode[offset]
-            offset += int(sxh[i]) + 1
-            if offset >= len(encode):
-                break
-        if offset > len(sxh):
-            decode += encode[offset:]
-        return decode
-
-    def __login(self):
-        if self.__check_session():
-            print('教务已登录')
-            return
-        cap = self.session.get(self.jw_cap_url, headers=self.headers).content
-        with open('cap.png', 'wb') as f:
-            f.write(cap)
-        cap_code = ocr_code(cap)
-        print('验证码：', cap_code)
-        code = self.session.get(self.jw_login_code, headers=self.headers).text
-        if code == 'no':
-            print('验证码加密失败')
-            return
-        data = {
-            'userAccount': self.user,
-            'userPassword': self.passwd,
-            'RANDOMCODE': cap_code,
-            'encoded': jw.encrypt(self.user + '%%%' + self.passwd, code),
-        }
-        response = self.session.post(self.jw_login, allow_redirects=False, data=data, headers=self.headers)
-        if response.status_code == 302:
-            print('教务登录成功')
-        else:
-            msg = self.__get_msg(response.text)
-            if msg == '验证码错误!!':
-                print('验证码错误 重试')
-                self.__login()
-                return
-            print(response.status_code, response.text)
-            raise Exception('教务登录失败', self.__get_msg(response.text))
-
-    def __sso_login(self):
-        if self.__check_session():
-            print('教务已登录')
-            return
-        ticket = self.sso_obj.get_service_ticket(self.service, True)
-        response = self.session.get(self.service + '?ticket=' + ticket, headers=self.headers)
-        if self.jw_index in response.url:
-            print('教务登录成功')
-        else:
-            print(response.status_code, response.url, response.text)
-            raise Exception('教务登录失败')
-
 class data_base:
-    def __init__(self, name, headers):
-        self.name = name
-        self.headers = headers
-        if os.path.exists(name):
-            self.df = pd.read_csv(name)
+    def __init__(self, file_path, column_headers):
+        self.file_path = file_path
+        self.column_headers = column_headers
+        self.file_exists = os.path.isfile(file_path)
+
+        if self.file_exists:
+            self.load_csv()
         else:
-            self.df = pd.DataFrame(columns=headers)
+            self.create_csv()
+
+    def load_csv(self):
+        with open(self.file_path, 'r', newline='') as file:
+            reader = csv.DictReader(file)
+            self.data = list(reader)
+
+    def create_csv(self):
+        self.data = []
+
+    def save_csv(self):
+        with open(self.file_path, 'w', newline='') as file:
+            writer = csv.DictWriter(file, fieldnames=self.column_headers)
+            writer.writeheader()
+            writer.writerows(self.data)
 
     def add_row(self, row):
-        df_ins = pd.DataFrame([row], columns=self.headers)
-        self.df = self.df.append(df_ins, ignore_index=True)
+        if isinstance(row, dict):
+            self.data.append(row)
+        elif isinstance(row, list):
+            self.data.append(dict(zip(self.column_headers, row)))
+        else:
+            raise ValueError("Invalid row format. Expected dict or list.")
 
     def get_row(self, index):
-        return self.df.loc[index]
+        return self.data[index]
 
     def get_last_row(self):
-        return self.df.iloc[-1]
+        return self.data[-1]
 
     def get_row_count(self):
-        return len(self.df)
-
-    def save(self):
-        self.df.to_csv(self.name, columns=self.headers, index=False)
+        return len(self.data)
 
     def __str__(self):
-        return self.df.__str__()
+        row_strings = [', '.join([f"{key}: {value}" for key, value in row.items()]) for row in self.data]
+        if len(row_strings) > 6:
+            row_strings = row_strings[:3] + ['...'] + row_strings[-3:]
+        return '\n'.join(row_strings)
 
 def load_config():
     yml = YAML(typ='safe')
@@ -566,14 +296,19 @@ def save_config(config):
     with open('config.yml', 'w', encoding='utf-8') as f:
         yml.dump(config, f)
 
+def push_wechat(url, content):
+    print(requests.post(url, json={
+        "msgtype": "text",
+        "text": {
+            "content": content
+        }
+    }).text)
 
 def main():
     data = data_base('data.csv', ['room', 'powerBalance', "diff_h", "diff", 'time'])
     config = load_config()
     card_info = config['card']
     gdgm_info = config['gdgm']
-    umooc_info = config['umooc']
-    jw_info = config['jw']
 
     # noinspection PyBroadException
     try:
@@ -582,11 +317,6 @@ def main():
     except Exception:
         print('sso登录异常')
         sso_obj = None
-
-    # umooc_obj = umooc(sso_obj, umooc_info['user'], umooc_info['password'])
-    # jw_obj = jw(sso_obj, jw_info['user'], jw_info['password'])
-    # print(jw_obj.get_soc())
-
 
     card_obj = card(sso_obj, card_info['user'], card_info['password'])
     power_data = card_obj.get_power_balance(card_info['impl'], card_info['no'], card_info['room'])
@@ -603,12 +333,15 @@ def main():
             print('数据未更新')
             print(data)
             return
-        diff_p = float(power_data['powerBalance']) - data.get_last_row()['powerBalance']
+        diff_p = float(power_data['powerBalance']) - float(data.get_last_row()['powerBalance'])
+        push_wechat(config['push_url'],
+                    '房间号：' + power_data['roomNum'] + '\n' + '电费：' + power_data['powerBalance'] + '\n' + '时间：' +
+                    power_data[
+                        'lastDate'] + '\n' + '电费增量：' + str(diff_p) + '\n' + '时间增量：' + str(diff_h) + '小时')
 
     data.add_row([power_data['roomNum'], power_data['powerBalance'], diff_h, diff_p, power_data['lastDate']])
-    data.save()
+    data.save_csv()
     print(data)
-
 
 if __name__ == '__main__':
     main()

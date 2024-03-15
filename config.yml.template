@@ -13,12 +13,4 @@ card:
   no: xxxx
   room: xxxx
 
-# 优慕课
-umooc:
-  user: xxxx
-  password: xxxx
-
-# 教务系统
-jw:
-  user: xxxx
-  password: xxxx
+push_url: https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key={key!!!}
