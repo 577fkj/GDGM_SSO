@@ -297,6 +297,7 @@ def save_config(config):
         yml.dump(config, f)
 
 def push_wechat(url, content):
+    print(content)
     print(requests.post(url, json={
         "msgtype": "text",
         "text": {
@@ -328,20 +329,30 @@ def main():
             power_data['lastDate'] = power_data['lastDate'][:-2]
         t = datetime.datetime.strptime(power_data['lastDate'], '%Y-%m-%d %H:%M:%S')
         last_t = datetime.datetime.strptime(data.get_last_row()['time'], '%Y-%m-%d %H:%M:%S')
-        diff_h = (t - last_t).seconds / 3600
-        if diff_h == 0:
+        diff_h = round((t - last_t).seconds / 3600, 2)
+        diff_p = round(float(power_data['powerBalance']) - float(data.get_last_row()['powerBalance']), 2)
+        if diff_h == 0 and diff_p == 0:
             print('数据未更新')
             print(data)
             return
-        diff_p = float(power_data['powerBalance']) - float(data.get_last_row()['powerBalance'])
+        tmp = ''
+        for i in range(data.get_row_count() - 1, -1, -1):
+            row = data.get_row(i)
+            power = float(row['diff'])
+            if power > 0:
+                m_datetime = datetime.datetime.strptime(data.get_last_row()['time'], '%Y-%m-%d %H:%M:%S') - datetime.datetime.strptime(row['time'], '%Y-%m-%d %H:%M:%S')
+                times = f'{m_datetime.days}天{m_datetime.seconds // 3600}小时{m_datetime.seconds % 3600 // 60}分钟'
+                tmp = f'\n上次充值信息：\n电费(度)：{power}\n时间：{row["time"]}\n\n经过了：{times}\n使用了(度)：{round(power - float(power_data["powerBalance"]), 2)}'
+                break
+
+
         push_wechat(config['push_url'],
-                    '房间号：' + power_data['roomNum'] + '\n' + '电费：' + power_data['powerBalance'] + '\n' + '时间：' +
+                    '房间号：' + power_data['roomNum'] + '\n' + '电费(度)：' + power_data['powerBalance'] + '\n' + '时间：' +
                     power_data[
-                        'lastDate'] + '\n' + '电费增量：' + str(diff_p) + '\n' + '时间增量：' + str(diff_h) + '小时')
+                        'lastDate'] + '\n' + '电费增量(度)：' + str(diff_p) + '\n' + '时间增量(小时)：' + str(diff_h) + '\n' + tmp)
 
     data.add_row([power_data['roomNum'], power_data['powerBalance'], diff_h, diff_p, power_data['lastDate']])
     data.save_csv()
-    print(data)
 
 if __name__ == '__main__':
     main()
