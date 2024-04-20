@@ -345,16 +345,17 @@ def main():
             for i in range(data.get_row_count() - 1, -1, -1):
                 row = data.get_row(i)
                 time = datetime.datetime.strptime(row['time'], '%Y-%m-%d %H:%M:%S')
+                diff = float(row['diff'])
 
                 if tmp == '' and time < now_day:
                     times = f'{(now - time).seconds // 3600}小时{(now - time).seconds % 3600 // 60}分钟'
                     now_str = now.strftime('%Y-%m-%d %H:%M:%S')
-                    tmp += f'\n开始时间: {time}\n    用电：{round(float(row["powerBalance"]) - float(power_data["powerBalance"]), 2)}度\n    时长：{times}\n结束时间：{now_str}\n'
+                    tmp += f'\n今日用电信息\n    用电：{round(float(row["powerBalance"]) - float(power_data["powerBalance"]), 2)}度\n    时长：{times}\n    开始时间: {time}\n    结束时间：{now_str}\n'
 
-                if float(row['diff']) > 0:
+                if diff > 0:
                     m_datetime = datetime.datetime.strptime(data.get_last_row()['time'], '%Y-%m-%d %H:%M:%S') - time
                     times = f'{m_datetime.days}天{m_datetime.seconds // 3600}小时{m_datetime.seconds % 3600 // 60}分钟'
-                    tmp += f'\n上次充值信息：\n    电费(度)：{float(row["powerBalance"])}\n    时间：{row["time"]}\n    经过了：{times}\n    使用了(度)：{round(float(row["powerBalance"]) - float(power_data["powerBalance"]), 2)}'
+                    tmp += f'\n上次充值信息：\n    充值(度)：{diff}\n    电费(度)：{float(row["powerBalance"])}\n    时间：{row["time"]}\n    经过了：{times}\n    使用了(度)：{round(float(row["powerBalance"]) - float(power_data["powerBalance"]), 2)}'
                     break
 
             push_wechat(config['push_url'],
