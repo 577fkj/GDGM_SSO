@@ -335,21 +335,32 @@ def main():
             print('数据未更新')
             print(data)
             return
-        tmp = ''
-        for i in range(data.get_row_count() - 1, -1, -1):
-            row = data.get_row(i)
-            power = float(row['diff'])
-            if power > 0:
-                m_datetime = datetime.datetime.strptime(data.get_last_row()['time'], '%Y-%m-%d %H:%M:%S') - datetime.datetime.strptime(row['time'], '%Y-%m-%d %H:%M:%S')
-                times = f'{m_datetime.days}天{m_datetime.seconds // 3600}小时{m_datetime.seconds % 3600 // 60}分钟'
-                tmp = f'\n上次充值信息：\n电费(度)：{power}\n时间：{row["time"]}\n\n经过了：{times}\n使用了(度)：{round(power - float(power_data["powerBalance"]), 2)}'
-                break
 
+        if diff_p > 0:
+            push_wechat(config['push_url'], f'电费余额增加{diff_p}度，时间：{power_data["lastDate"]}')
+        else:
+            tmp = ''
+            now = datetime.datetime.now()
+            now_day = datetime.datetime(now.year, now.month, now.day)
+            for i in range(data.get_row_count() - 1, -1, -1):
+                row = data.get_row(i)
+                time = datetime.datetime.strptime(row['time'], '%Y-%m-%d %H:%M:%S')
 
-        push_wechat(config['push_url'],
-                    '房间号：' + power_data['roomNum'] + '\n' + '电费(度)：' + power_data['powerBalance'] + '\n' + '时间：' +
-                    power_data[
-                        'lastDate'] + '\n' + '电费增量(度)：' + str(diff_p) + '\n' + '时间增量(小时)：' + str(diff_h) + '\n' + tmp)
+                if tmp == '' and time < now_day:
+                    times = f'{(now - time).seconds // 3600}小时{(now - time).seconds % 3600 // 60}分钟'
+                    now_str = now.strftime('%Y-%m-%d %H:%M:%S')
+                    tmp += f'\n开始时间: {time}\n    用电：{round(float(row["powerBalance"]) - float(power_data["powerBalance"]), 2)}度\n    时长：{times}\n结束时间：{now_str}\n'
+
+                if float(row['diff']) > 0:
+                    m_datetime = datetime.datetime.strptime(data.get_last_row()['time'], '%Y-%m-%d %H:%M:%S') - time
+                    times = f'{m_datetime.days}天{m_datetime.seconds // 3600}小时{m_datetime.seconds % 3600 // 60}分钟'
+                    tmp += f'\n上次充值信息：\n    电费(度)：{float(row["powerBalance"])}\n    时间：{row["time"]}\n    经过了：{times}\n    使用了(度)：{round(float(row["powerBalance"]) - float(power_data["powerBalance"]), 2)}'
+                    break
+
+            push_wechat(config['push_url'],
+                        '房间号：' + power_data['roomNum'] + '\n' + '电费(度)：' + power_data['powerBalance'] + '\n' + '时间：' +
+                        power_data[
+                            'lastDate'] + '\n' + '电费增量(度)：' + str(diff_p) + '\n' + '时间增量(小时)：' + str(diff_h) + '\n' + tmp)
 
     data.add_row([power_data['roomNum'], power_data['powerBalance'], diff_h, diff_p, power_data['lastDate']])
     data.save_csv()
