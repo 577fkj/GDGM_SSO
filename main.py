@@ -350,7 +350,7 @@ def main():
                 if tmp == '' and time < now_day:
                     times = f'{(now - time).seconds // 3600}小时{(now - time).seconds % 3600 // 60}分钟'
                     now_str = now.strftime('%Y-%m-%d %H:%M:%S')
-                    tmp += f'\n今日用电信息\n    用电：{round(float(row["powerBalance"]) - float(power_data["powerBalance"]), 2)}度\n    时长：{times}\n    开始时间: {time}\n    结束时间：{now_str}\n'
+                    tmp += f'\n今日用电信息\n    用电：{round(float(row["powerBalance"]) - float(power_data["powerBalance"]), 2)}度\n    时长：{times}\n    开始时间：{time}\n    结束时间：{now_str}\n'
 
                 if diff > 0:
                     m_datetime = datetime.datetime.strptime(data.get_last_row()['time'], '%Y-%m-%d %H:%M:%S') - time
