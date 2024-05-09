@@ -121,9 +121,9 @@ class sso:
         data = {
             'username': self.user,
             'password': self.__encrypt(self.passwd, self.__get_aes(html)),
-            'lt': self.__get_lt(html),
+            'lt': self.get_lt(html),
             'dllt': 'userNamePasswordLogin',
-            'execution': self.__get_execution(html),
+            'execution': self.get_execution(html),
             '_eventId': 'submit',
             'rmShown': '1'
         }
