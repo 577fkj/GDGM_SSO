@@ -377,9 +377,6 @@ def main():
         print('sso登录异常')
         sso_obj = None
 
-    print(sso_obj)
-    exit()
-
     card_obj = card(sso_obj, card_info['user'], card_info['password'])
     power_data = card_obj.get_power_balance(card_info['impl'], card_info['no'], card_info['room'])
 
