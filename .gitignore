@@ -3,3 +3,4 @@
 /config.yml
 /data.csv
 /.idea
+/__pycache__

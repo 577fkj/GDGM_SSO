@@ -14,6 +14,7 @@ from ruamel.yaml import YAML
 import pandas as pd
 import requests
 import ddddocr
+import time
 
 def pad(b: bytearray, blocksize: int) -> bytearray:
     pad_data = b''
@@ -37,24 +38,26 @@ class sso:
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36 Edg/117.0.2045.36'
     }
 
-    sso_url = 'https://sfrz.gdgm.cn/authserver/login'
-    sso_cap_check_url = "https://sfrz.gdgm.cn/authserver/needCaptcha.html?username={}&pwdEncrypt2=pwdEncryptSalt"
-    sso_cap_img_url = "https://sfrz.gdgm.cn/authserver/captcha.html"
-    sso_service_url = 'https://sfrz.gdgm.cn/authserver/login?service={}'
+    sso_server = 'https://sfrz.gdgm.cn'
+    sso_url = sso_server + '/authserver/login'
+    sso_cap_check_url = sso_server + '/authserver/needCaptcha.html?username={}&pwdEncrypt2=pwdEncryptSalt'
+    sso_cap_img_url = sso_server + '/authserver/captcha.html'
+    sso_service_url = sso_server + '/authserver/login?service={}'
     session = requests.Session()
 
     def __init__(self, user, passwd):
-        self.user = user
-        self.passwd = passwd
-        self.__load_cookies()
-        self.__login()
-        self.__save_cookies()
+        self.load_cookies()
+        if user and passwd:
+            self.user = user
+            self.passwd = passwd
+            self.__login()
+            self.save_cookies()
 
-    def __save_cookies(self):
+    def save_cookies(self):
         with open('sso_cookies', 'wb') as f:
             pickle.dump(self.session.cookies, f)
 
-    def __load_cookies(self):
+    def load_cookies(self):
         if os.path.exists('sso_cookies'):
             with open('sso_cookies', 'rb') as f:
                 self.session.cookies.update(pickle.load(f))
@@ -95,11 +98,11 @@ class sso:
         return enc
 
     @staticmethod
-    def __get_lt(data):
+    def get_lt(data):
         return re.findall(r'(?<=name="lt" value=").*?(?=")', data)[0]
 
     @staticmethod
-    def __get_execution(data):
+    def get_execution(data):
         return re.findall(r'(?<=name="execution" value=").*?(?=")', data)[0]
 
     @staticmethod
@@ -142,6 +145,60 @@ class sso:
             print('sso登录失败')
             raise Exception(re.findall(r'(?<=id="msg" class="auth_error" style="top:-19px;">).*?(?=</span>)', response.text)[0])
 
+class sso_qrcode(sso):
+    sso_server = 'https://sfrz.gdgm.cn'
+    sso_url = sso_server + '/authserver/login?display=qrLogin'
+    sso_get_qr_code_url = sso_server + '/authserver/qrCode/get'
+    sso_get_qr_img_url = sso_server + '/authserver/qrCode/code?uuid={}'
+    sso_check_qr_code_url = sso_server + '/authserver/qrCode/status?uuid={}'
+
+    uuid = ''
+
+    def __init__(self):
+        super().__init__('', '')
+
+    def __get_qr_code_uuid(self):
+        return self.session.get(self.sso_get_qr_code_url, headers=self.headers).text
+
+    def get_qr_img(self):
+        if not self.uuid:
+            self.uuid = self.__get_qr_code_uuid()
+        rsp = self.session.get(self.sso_get_qr_img_url.format(self.uuid), headers=self.headers)
+        with open('qrcode.png', 'wb') as f:
+            f.write(rsp.content)
+        return rsp.content
+
+    def check_qr_code(self):
+        """
+        检查二维码状态
+        0: 未扫描
+        2: 已扫描
+        1: 已登录
+        :return:
+        """
+        return self.session.get(self.sso_check_qr_code_url.format(self.uuid), headers=self.headers).text
+
+    def login(self):
+        response = self.session.get(self.sso_url, allow_redirects=False, headers=self.headers)
+        if response.status_code == 302:
+            print('sso已登录')
+            return
+        html = response.text
+        data = {
+            'lt': self.get_lt(html),
+            'uuid': self.uuid,
+            'dllt': 'qrLogin',
+            'execution': self.get_execution(html),
+            '_eventId': 'submit',
+            'rmShown': '1'
+        }
+        response = self.session.post(self.sso_url, data=data, allow_redirects=False, headers=self.headers)
+        if 'Location' in response.headers.keys():
+            print('sso登录成功')
+            self.save_cookies()
+        else:
+            print('sso登录失败')
+            raise Exception('sso登录失败')
 
 class card:
     headers = {
@@ -612,3 +669,9 @@ def main():
 
 if __name__ == '__main__':
     main()
+    
+    # sso_obj = sso_qrcode()
+    # sso_obj.get_qr_img()
+    # while sso_obj.check_qr_code() != '1':
+    #     time.sleep(1)
+    # sso_obj.login()
