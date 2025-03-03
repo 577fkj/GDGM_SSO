@@ -406,7 +406,10 @@ def main():
                 diff = float(row['diff'])
 
                 if tmp == '' and time < now_day:
-                    times = f'{(now - time).seconds // 3600}小时{(now - time).seconds % 3600 // 60}分钟'
+                    m_datetime = now - time
+                    times = f'{m_datetime.seconds // 3600}小时{m_datetime.seconds % 3600 // 60}分钟'
+                    if m_datetime.days > 0:
+                        times = f'{m_datetime.days}天' + times
                     now_str = now.strftime('%Y-%m-%d %H:%M:%S')
                     tmp += f'\n今日用电信息\n    用电：{round(float(row["powerBalance"]) - float(power_data["powerBalance"]), 2)}度\n    时长：{times}\n    开始时间：{time}\n    结束时间：{now_str}\n'
 
