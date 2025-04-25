@@ -1,3 +1,5 @@
+import json
+
 from lxml import html
 
 days = {
@@ -120,12 +122,12 @@ def get_timetable(content):
             col.append(x_str)
 
     data = {}
-
-    for i in range(2, len(row) + 1): # 行
-        data[col[i - 2]] = []
+    for i in range(2, len(col) + 1): # 根据节获取每行课程
+        col_key = col[i - 2]
+        data[col_key] = []
         keys = root.xpath(f'//tr[{i}]/td/input[@name="jx0415zbdiv_2"]')
         for key in keys:
-            data[col[i - 2]].append(root.xpath(f'//tr[{i}]/td/div[@id="{key.value}"]')[0]) # 课程
+            data[col_key].append(root.xpath(f'//tr[{i}]/td/div[@id="{key.value}"]')[0]) # 课程
 
     all_courses = {}
 
@@ -150,8 +152,11 @@ def get_timetable(content):
                 }
                 all_courses[key]['schedule'].append(schedule)
 
+    remarks = root.xpath(f'//tr[{len(col) + 1}]/td')[0].text_content().strip()
+
     data = {
         "semester": semester,
+        "remarks": remarks,
         "time": period_times,
         "courses": []
     }
